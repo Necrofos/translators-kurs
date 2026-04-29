@@ -1,0 +1,7 @@
+name = John
+flag = 1
+small
+0
+1
+2
+15
