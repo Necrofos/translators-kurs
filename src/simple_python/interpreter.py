@@ -1,6 +1,13 @@
 import ast
 
-from .runtime import ReturnSignal, Scope, UserFunction
+from .runtime import (
+    ReturnSignal,
+    Scope,
+    StructDefinition,
+    StructInstance,
+    UserFunction,
+    copy_value,
+)
 from .generated.SimplePythonParser import SimplePythonParser
 from .generated.SimplePythonParserVisitor import SimplePythonParserVisitor
 
@@ -9,6 +16,7 @@ class Interpreter(SimplePythonParserVisitor):
     def __init__(self, output_stream=None):
         self.globals = Scope()
         self.scope = self.globals
+        self.structs = {}
         self.output_stream = output_stream
 
     def execute(self, tree):
@@ -20,12 +28,55 @@ class Interpreter(SimplePythonParserVisitor):
         else:
             self.output_stream.write(value)
 
-    def _default_value(self, type_name):
+    def _default_value(self, type_name, stack=None):
         if type_name == "bool":
             return False
         if type_name == "char*":
             return ""
-        return 0
+        if type_name == "int":
+            return 0
+        if type_name.startswith("struct "):
+            struct_name = type_name.removeprefix("struct ")
+            definition = self.structs.get(struct_name)
+            if definition is None:
+                raise NameError(f"Struct '{struct_name}' is not defined")
+
+            stack = set() if stack is None else stack
+            if struct_name in stack:
+                raise ValueError(f"Struct '{struct_name}' contains itself by value")
+
+            nested_stack = set(stack)
+            nested_stack.add(struct_name)
+            values = {
+                field["name"]: self._default_value(field["type"], nested_stack)
+                for field in definition.fields
+            }
+            return StructInstance(definition, values)
+
+        raise TypeError(f"Unknown type '{type_name}'")
+
+    def _field_names(self, ctx):
+        return [token.getText() for token in ctx.NAME()]
+
+    def _read_field_chain(self, names):
+        value = self.scope.get(names[0])
+        for field_name in names[1:]:
+            if not isinstance(value, StructInstance):
+                raise TypeError(f"Value '{names[0]}' is not a struct")
+            value = value.get_field(field_name)
+        return value
+
+    def _write_field_chain(self, names, value):
+        target = self.scope.get(names[0])
+        for field_name in names[1:-1]:
+            if not isinstance(target, StructInstance):
+                raise TypeError(f"Value '{names[0]}' is not a struct")
+            target = target.get_field(field_name)
+
+        if not isinstance(target, StructInstance):
+            raise TypeError(f"Value '{names[0]}' is not a struct")
+
+        target.set_field(names[-1], value)
 
     def _format_printf(self, arguments):
         if not arguments:
@@ -56,6 +107,8 @@ class Interpreter(SimplePythonParserVisitor):
         return None
 
     def visitDeclaration(self, ctx):
+        if ctx.structDefinition():
+            return self.visit(ctx.structDefinition())
         if ctx.functionDefinition():
             return self.visit(ctx.functionDefinition())
         return self.visit(ctx.statement())
@@ -92,13 +145,16 @@ class Interpreter(SimplePythonParserVisitor):
         value = self._default_value(type_name)
         if ctx.expression():
             value = self.visit(ctx.expression())
-        self.scope.declare(ctx.NAME().getText(), value)
+        self.scope.declare(ctx.NAME().getText(), copy_value(value))
         return value
 
     def visitAssignment(self, ctx):
-        name = ctx.NAME().getText()
         value = self.visit(ctx.expression())
-        self.scope.assign(name, value)
+        names = self._field_names(ctx.assignmentTarget())
+        if len(names) == 1:
+            self.scope.assign(names[0], copy_value(value))
+        else:
+            self._write_field_chain(names, value)
         return value
 
     def visitPrintfStatement(self, ctx):
@@ -142,10 +198,35 @@ class Interpreter(SimplePythonParserVisitor):
     def visitFunctionReturnType(self, ctx):
         if ctx.VOID():
             return "void"
-        return "int"
+        return self.visit(ctx.typeSpecifier())
 
     def visitTypeSpecifier(self, ctx):
+        if ctx.STRUCT():
+            return f"struct {ctx.NAME().getText()}"
         return ctx.getText().replace(" ", "")
+
+    def visitStructDefinition(self, ctx):
+        name = ctx.NAME().getText()
+        if name in self.structs:
+            raise NameError(f"Struct '{name}' is already defined")
+
+        fields = [self.visit(field) for field in ctx.structFieldDeclaration()]
+        field_names = set()
+        for field in fields:
+            field_name = field["name"]
+            if field_name in field_names:
+                raise NameError(f"Field '{field_name}' is already declared in struct '{name}'")
+            field_names.add(field_name)
+
+        definition = StructDefinition(name, fields)
+        self.structs[name] = definition
+        return definition
+
+    def visitStructFieldDeclaration(self, ctx):
+        return {
+            "type": self.visit(ctx.typeSpecifier()),
+            "name": ctx.NAME().getText(),
+        }
 
     def visitParameter(self, ctx):
         return {
@@ -238,9 +319,14 @@ class Interpreter(SimplePythonParserVisitor):
             return self.visit(ctx.literal())
         if ctx.functionCall():
             return self.visit(ctx.functionCall())
+        if ctx.fieldAccess():
+            return self.visit(ctx.fieldAccess())
         if ctx.NAME():
             return self.scope.get(ctx.NAME().getText())
         return self.visit(ctx.expression())
+
+    def visitFieldAccess(self, ctx):
+        return self._read_field_chain(self._field_names(ctx))
 
     def visitFunctionCall(self, ctx):
         function_name = ctx.NAME().getText()

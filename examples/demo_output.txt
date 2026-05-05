@@ -4,4 +4,5 @@ small
 0
 1
 2
+point = 10
 15

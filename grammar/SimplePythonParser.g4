@@ -9,7 +9,8 @@ program
     ;
 
 declaration
-    : functionDefinition
+    : structDefinition
+    | functionDefinition
     | statement
     ;
 
@@ -29,7 +30,7 @@ variableDeclaration
     ;
 
 assignment
-    : NAME ASSIGN expression
+    : assignmentTarget ASSIGN expression
     ;
 
 printfStatement
@@ -57,7 +58,7 @@ functionDefinition
     ;
 
 functionReturnType
-    : INT
+    : typeSpecifier
     | VOID
     ;
 
@@ -65,6 +66,15 @@ typeSpecifier
     : INT
     | BOOL
     | CHAR_PTR
+    | STRUCT NAME
+    ;
+
+structDefinition
+    : STRUCT NAME OPEN_BRACE structFieldDeclaration* CLOSE_BRACE SEMICOLON
+    ;
+
+structFieldDeclaration
+    : typeSpecifier NAME SEMICOLON
     ;
 
 parameterList
@@ -120,12 +130,21 @@ unaryExpression
 primary
     : literal
     | functionCall
+    | fieldAccess
     | NAME
     | OPEN_PAREN expression CLOSE_PAREN
     ;
 
 functionCall
     : NAME OPEN_PAREN argumentList? CLOSE_PAREN
+    ;
+
+fieldAccess
+    : NAME (DOT NAME)+
+    ;
+
+assignmentTarget
+    : NAME (DOT NAME)*
     ;
 
 literal

@@ -74,6 +74,16 @@ class SimplePythonParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by SimplePythonParser#structDefinition.
+    def visitStructDefinition(self, ctx:SimplePythonParser.StructDefinitionContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by SimplePythonParser#structFieldDeclaration.
+    def visitStructFieldDeclaration(self, ctx:SimplePythonParser.StructFieldDeclarationContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by SimplePythonParser#parameterList.
     def visitParameterList(self, ctx:SimplePythonParser.ParameterListContext):
         return self.visitChildren(ctx)
@@ -141,6 +151,16 @@ class SimplePythonParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by SimplePythonParser#functionCall.
     def visitFunctionCall(self, ctx:SimplePythonParser.FunctionCallContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by SimplePythonParser#fieldAccess.
+    def visitFieldAccess(self, ctx:SimplePythonParser.FieldAccessContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by SimplePythonParser#assignmentTarget.
+    def visitAssignmentTarget(self, ctx:SimplePythonParser.AssignmentTargetContext):
         return self.visitChildren(ctx)
 
 
